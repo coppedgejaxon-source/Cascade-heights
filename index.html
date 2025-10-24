@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cascade Heights: The Game</title>
+<style>
+    * { box-sizing: border-box; margin:0; padding:0; }
+    html, body { width:100%; height:100%; overflow:hidden; font-family: 'Press Start 2P', monospace; background:#87CEEB; }
+
+    canvas { display:block; margin:0 auto; background:#87CEEB; }
+
+    #menu, #gameOver {
+        position:absolute; top:0; left:0; width:100%; height:100%;
+        background: #000; color:#fff; display:flex; flex-direction:column;
+        justify-content:center; align-items:center; z-index:10;
+        font-family: 'Press Start 2P', monospace;
+    }
+    .btn {
+        background:#4CAF50; color:#fff; padding:10px 20px; margin:10px; border:none; cursor:pointer; font-size:14px;
+    }
+    .btn:hover { background:#45a049; }
+    h1 { font-size:24px; margin-bottom:20px; }
+</style>
+</head>
+<body>
+
+<!-- Main Menu -->
+<div id="menu">
+    <h1>CASCADE HEIGHTS: THE GAME</h1>
+    <button class="btn" id="startBtn">PLAY</button>
+    <button class="btn" id="howBtn">HOW TO PLAY</button>
+    <p id="instructions" style="display:none; margin-top:20px; text-align:center;">
+        Press SPACE or CLICK/TAP to flap the helicopter.<br>
+        Avoid the birds and survive as long as possible!
+    </p>
+</div>
+
+<!-- Game Over Screen -->
+<div id="gameOver" style="display:none;">
+    <h1>GAME OVER!</h1>
+    <p id="finalScore">Score: 0</p>
+    <p id="highScore">High Score: 0</p>
+    <button class="btn" id="restartBtn">PLAY AGAIN</button>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<audio id="bgMusic" loop>
+    <source src="https://freesound.org/data/previews/566/566056_1648176-lq.mp3" type="audio/mpeg">
+</audio>
+<audio id="flapSFX">
+    <source src="https://freesound.org/data/previews/269/269444_5121236-lq.mp3" type="audio/mpeg">
+</audio>
+<audio id="hitSFX">
+    <source src="https://freesound.org/data/previews/341/341695_6242632-lq.mp3" type="audio/mpeg">
+</audio>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+let W = window.innerWidth;
+let H = window.innerHeight;
+canvas.width = W;
+canvas.height = H;
+
+// Assets (pixel style)
+const heli = new Image();
+heli.src = 'https://i.imgur.com/kfXlZ7S.png'; // 8-bit helicopter
+
+const birdImg = new Image();
+birdImg.src = 'https://i.imgur.com/8xqZrOQ.png'; // 8-bit bird
+
+// Mountains
+const mountainImg = new Image();
+mountainImg.src = 'https://i.imgur.com/h3C0F9H.png'; // 8-bit mountains
+
+// Game variables
+let helicopter = { x: 150, y: H/2, width: 60, height: 40, velocity:0 };
+let gravity = 0.5;
+let flapPower = -8;
+let birds = [];
+let birdSpawnInterval = 2000; // spawn every 2 sec
+let lastSpawn = Date.now();
+let mountains = [];
+let score = 0;
+let highScore = 0;
+let gamePlaying = false;
+let bgOffset = 0;
+let music = document.getElementById('bgMusic');
+let flapSound = document.getElementById('flapSFX');
+let hitSound = document.getElementById('hitSFX');
+
+// Initialize mountains
+for(let i=0;i<3;i++){
+    mountains.push({x:i*W, y:H-200, width:W, height:200});
+}
+
+// Event listeners
+document.addEventListener('keydown', e => { if(e.code==='Space') flap(); });
+canvas.addEventListener('click', flap);
+document.getElementById('startBtn').onclick = startGame;
+document.getElementById('howBtn').onclick = () => {
+    const instr = document.getElementById('instructions');
+    instr.style.display = instr.style.display==='none'?'block':'none';
+};
+document.getElementById('restartBtn').onclick = startGame;
+
+function flap(){
+    if(!gamePlaying) return;
+    helicopter.velocity = flapPower;
+    flapSound.currentTime=0; flapSound.play();
+}
+
+// Bird class
+class Bird{
+    constructor(){
+        this.width=50; this.height=40;
+        this.x=W+50;
+        this.y=Math.random()*(H-300)+100;
+        this.speed=4 + Math.random()*2;
+    }
+    update(){
+        this.x -= this.speed;
+        if(this.x+this.width<0){
+            birds.splice(birds.indexOf(this),1);
+            score+=10;
+            if(score>highScore) highScore=score;
+        }
+    }
+    draw(){
+        ctx.drawImage(birdImg,this.x,this.y,this.width,this.height);
+    }
+}
+
+// Game functions
+function startGame(){
+    document.getElementById('menu').style.display='none';
+    document.getElementById('gameOver').style.display='none';
+    helicopter.y=H/2;
+    helicopter.velocity=0;
+    birds=[];
+    score=0;
+    gamePlaying=true;
+    music.currentTime=0; music.play();
+    requestAnimationFrame(gameLoop);
+}
+
+function endGame(){
+    gamePlaying=false;
+    music.pause();
+    hitSound.play();
+    document.getElementById('finalScore').textContent='Score: '+score;
+    document.getElementById('highScore').textContent='High Score: '+highScore;
+    document.getElementById('gameOver').style.display='flex';
+}
+
+function update(){
+    helicopter.velocity+=gravity;
+    helicopter.y+=helicopter.velocity;
+    if(helicopter.y<0) helicopter.y=0;
+    if(helicopter.y+helicopter.height>H) endGame();
+
+    // Update birds
+    if(Date.now()-lastSpawn>birdSpawnInterval){
+        birds.push(new Bird());
+        lastSpawn=Date.now();
+    }
+    birds.forEach(b=>b.update());
+
+    // Update mountains
+    bgOffset+=2;
+    if(bgOffset>W) bgOffset=0;
+}
+
+function draw(){
+    ctx.clearRect(0,0,W,H);
+    
+    // Draw mountains
+    mountains.forEach(m=>{
+        let x = m.x - bgOffset;
+        ctx.drawImage(mountainImg, x, m.y, m.width, m.height);
+        ctx.drawImage(mountainImg, x+W, m.y, m.width, m.height);
+    });
+
+    // Draw helicopter
+    ctx.drawImage(heli, helicopter.x, helicopter.y, helicopter.width, helicopter.height);
+
+    // Draw birds
+    birds.forEach(b=>b.draw());
+
+    // Draw score
+    ctx.fillStyle='white';
+    ctx.font='20px monospace';
+    ctx.fillText('Score: '+score, 20, 40);
+}
+
+function checkCollision(){
+    for(let b of birds){
+        if(helicopter.x< b.x+b.width && helicopter.x+helicopter.width>b.x &&
+           helicopter.y<b.y+b.height && helicopter.y+helicopter.height>b.y){
+               endGame();
+        }
+    }
+}
+
+function gameLoop(){
+    if(!gamePlaying) return;
+    update();
+    draw();
+    checkCollision();
+    requestAnimationFrame(gameLoop);
+}
+
+// Resize canvas
+window.addEventListener('resize', ()=>{
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width=W;
+    canvas.height=H;
+});
+</script>
+</body>
+</html>
